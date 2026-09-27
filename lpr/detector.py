@@ -13,6 +13,7 @@ class Detection:
     confidence: float
     class_id: int = 0
     label: str = "license_plate"
+    track_id: int | None = None
 
     @property
     def area(self) -> int:
@@ -74,7 +75,23 @@ class YOLODetector:
             image, conf=self.conf, iou=self.iou, imgsz=self.imgsz,
             device=self.device, classes=self.classes, verbose=False,
         )
-        h, w = image.shape[:2]
+        return self._to_detections(results, image.shape)
+
+    def track(self, image: np.ndarray, tracker: str = "bytetrack.yaml") -> list[Detection]:
+        """Detect and give each object a track ID that persists across frames.
+
+        The tracker state is stored inside this model instance, so each
+        video stream needs its own ``YOLODetector``.
+        """
+        results = self.model.track(
+            image, conf=self.conf, iou=self.iou, imgsz=self.imgsz,
+            device=self.device, classes=self.classes, tracker=tracker,
+            persist=True, verbose=False,
+        )
+        return self._to_detections(results, image.shape)
+
+    def _to_detections(self, results, shape) -> list[Detection]:
+        h, w = shape[:2]
         names = self.model.names
         detections: list[Detection] = []
         for r in results:
@@ -83,10 +100,12 @@ class YOLODetector:
             xyxy = r.boxes.xyxy.cpu().numpy()
             confs = r.boxes.conf.cpu().numpy()
             clss = r.boxes.cls.cpu().numpy().astype(int)
-            for box, c, k in zip(xyxy, confs, clss):
+            ids = (r.boxes.id.cpu().numpy().astype(int).tolist()
+                   if getattr(r.boxes, "id", None) is not None else [None] * len(clss))
+            for box, c, k, tid in zip(xyxy, confs, clss, ids):
                 detections.append(Detection(
                     box=clip_box(box, w, h), confidence=float(c),
-                    class_id=int(k), label=str(names.get(int(k), k)),
+                    class_id=int(k), label=str(names.get(int(k), k)), track_id=tid,
                 ))
         detections.sort(key=lambda d: d.confidence, reverse=True)
         return detections

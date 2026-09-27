@@ -1,0 +1,19 @@
+services:
+  lpr:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./weights:/app/weights:ro          # plate_yolo11.pt (or exported .onnx / .engine)
+      - ./configs:/app/configs:ro          # system.yaml, registry
+      - ./data:/app/data                   # event database + snapshots
+      - lpr-models:/models                 # PaddleOCR / YOLO model cache
+    # Uncomment for an NVIDIA GPU (after building a GPU image, see Dockerfile):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]
+
+volumes:
+  lpr-models:

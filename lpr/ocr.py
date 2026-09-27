@@ -117,23 +117,35 @@ def parse_paddle_output(raw) -> list[TextLine]:
 
 class PlateOCR:
     def __init__(self, lang: str = "en", use_gpu: bool = False,
-                 min_line_confidence: float = 0.3):
+                 min_line_confidence: float = 0.3, det_model_dir: str | None = None,
+                 rec_model_dir: str | None = None, rec_model_name: str | None = None):
+        """``det_model_dir`` / ``rec_model_dir`` point to local model folders,
+        for offline sites or a recogniser fine-tuned on local plates. Leave
+        them unset to download PaddleOCR's default models on first use."""
         import paddleocr  # imported here so tests do not need it
 
         self.min_line_confidence = min_line_confidence
         version = getattr(paddleocr, "__version__", "2")
         self._v3 = int(str(version).split(".")[0]) >= 3
         if self._v3:
+            extra = {k: v for k, v in {
+                "text_detection_model_dir": det_model_dir,
+                "text_recognition_model_dir": rec_model_dir,
+                "text_recognition_model_name": rec_model_name,
+            }.items() if v}
             self.engine = paddleocr.PaddleOCR(
-                lang=lang,
+                **({} if rec_model_name else {"lang": lang}),
+                **extra,
                 use_textline_orientation=True,
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 device="gpu" if use_gpu else "cpu",
             )
         else:
+            extra = {k: v for k, v in {"det_model_dir": det_model_dir,
+                                       "rec_model_dir": rec_model_dir}.items() if v}
             self.engine = paddleocr.PaddleOCR(
-                lang=lang, use_angle_cls=True, use_gpu=use_gpu, show_log=False,
+                lang=lang, use_angle_cls=True, use_gpu=use_gpu, show_log=False, **extra,
             )
 
     def recognize(self, image: np.ndarray) -> OCRResult:

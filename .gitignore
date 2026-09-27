@@ -12,3 +12,6 @@ weights/*.pt
 *.pt
 !weights/.gitkeep
 outputs/
+
+# Runtime data (event database, snapshots)
+data/

@@ -3,6 +3,7 @@
     python scripts/infer.py --weights weights/plate_yolo11.pt --source car.jpg
     python scripts/infer.py --weights weights/plate_yolo11.pt --source images/ --save outputs/
     python scripts/infer.py --weights weights/plate_yolo11.pt --source 0          # webcam
+    python scripts/infer.py --config configs/system.yaml --source car.jpg         # all settings from config
 
 With vehicle-plate verification (Section 8):
 
@@ -49,7 +50,9 @@ def iter_video(source: str, stride: int):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--weights", required=True, help="trained plate detector weights")
+    ap.add_argument("--config", default=None,
+                    help="system config (configs/system.yaml). Overrides the model flags below")
+    ap.add_argument("--weights", default=None, help="trained plate detector weights")
     ap.add_argument("--source", required=True, help="image, folder, video file or webcam index")
     ap.add_argument("--conf", type=float, default=0.25)
     ap.add_argument("--device", default=None)
@@ -62,12 +65,23 @@ def main():
     ap.add_argument("--make-model-weights", default=None)
     args = ap.parse_args()
 
-    pipe = LicensePlatePipeline.from_weights(
-        args.weights, conf=args.conf, device=args.device,
-        use_enhancement=not args.no_enhance,
-        vehicle_weights=args.vehicle_weights, registry_path=args.registry,
-        body_type_weights=args.body_type_weights, make_model_weights=args.make_model_weights,
-    )
+    if args.config:
+        from lpr.config import load_config
+
+        cfg = load_config(args.config)
+        if args.no_enhance:
+            cfg["enhancement"]["enabled"] = False
+        pipe = LicensePlatePipeline.from_config(cfg)
+    elif not args.weights:
+        ap.error("--weights or --config is required")
+    else:
+        pipe = LicensePlatePipeline.from_weights(
+            args.weights, conf=args.conf, device=args.device,
+            use_enhancement=not args.no_enhance,
+            vehicle_weights=args.vehicle_weights, registry_path=args.registry,
+            body_type_weights=args.body_type_weights,
+            make_model_weights=args.make_model_weights,
+        )
     src = Path(args.source)
     is_video = args.source.isdigit() or src.suffix.lower() in VID_EXTS
     frames = iter_video(args.source, args.stride) if is_video else iter_images(args.source)

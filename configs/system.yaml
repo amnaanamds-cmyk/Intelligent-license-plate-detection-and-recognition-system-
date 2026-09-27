@@ -1,0 +1,83 @@
+# Deployment configuration for the LPR system.
+# Values left out here fall back to the defaults in lpr/config.py.
+
+detector:
+  weights: weights/plate_yolo11.pt   # .pt, or an exported .onnx / .engine / *_openvino_model
+  conf: 0.35
+  iou: 0.7
+  imgsz: 640
+  device: null                       # null = auto, "0" = first GPU, "cpu"
+  min_plate_width: 60                # px. Smaller plates are tracked but not read yet
+
+ocr:
+  lang: en
+  use_gpu: false
+  min_line_confidence: 0.5
+  # For offline sites or a fine-tuned recogniser (see docs/DEPLOYMENT.md):
+  det_model_dir: null
+  rec_model_dir: null
+  rec_model_name: null
+
+enhancement:
+  enabled: true
+  deskew: true
+  clahe_clip_limit: 2.0
+  target_height: 96
+
+plate_format:
+  enabled: true
+  # L = letter, D = digit. Separators are ignored. These are EXAMPLE
+  # templates. Replace them with the plate series used where the system is
+  # deployed.
+  templates:
+    - LLLDDDD
+    - LLLDDD
+    - LLDDDD
+    - LLDDD
+    - LLLDDDDDD
+    - LLDDDDDD
+  # Printed words that are not part of the registration number.
+  ignore_words: [PUNJAB, SINDH, KPK, KP, BALOCHISTAN, ISLAMABAD, PAKISTAN, GOVT]
+  max_substitutions: 2
+  reject_invalid: false              # true = drop reads that match no template
+
+tracking:
+  tracker: bytetrack.yaml
+  min_reads: 3                       # agreeing reads needed to emit an event early
+  agreement: 0.6                     # share of vote weight the winning string needs
+  max_reads: 12                      # stop running OCR on a track after this many reads
+  lost_frames: 30                    # a track counts as finished after this many frames unseen
+
+verification:
+  enabled: false
+  vehicle_weights: yolo11n.pt
+  registry: configs/registry_example.json
+  body_type_weights: null
+  make_model_weights: null
+  min_mismatches: 1
+
+storage:
+  database: data/lpr.db
+  snapshot_dir: data/snapshots
+  save_snapshots: true
+  retention_days: 90                 # older events and images are purged. 0 = keep forever
+
+alerts:
+  on_watchlist: true
+  on_mismatch: true
+  watchlist_max_distance: 1          # 1 = also alert on a 1-character near match
+  webhook_url: null                  # e.g. https://ops.example.com/lpr-alerts
+  webhook_timeout: 5
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  api_key: null                      # set to require the X-API-Key header
+
+cameras: []
+# - id: main-gate-in
+#   source: rtsp://user:pass@192.168.1.64:554/Streaming/Channels/101
+#   stride: 2                        # process every 2nd frame
+#   enabled: true
+# - id: test-video
+#   source: samples/traffic.mp4

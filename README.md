@@ -41,6 +41,14 @@ lpr/
   pipeline.py      end-to-end pipeline + drawing
   verification.py  vehicle attributes, registration records, comparator (8)
   metrics.py       F1, CER, exact-match / character accuracy (6)
+  geometry.py      deskew (rotation correction) for tilted plates
+  postprocess.py   plate-format rules: O/0, B/8, S/5 correction, ignore province text
+  tracking.py      multi-frame voting: one event per vehicle from many reads
+  stream.py        RTSP/webcam/video workers, reconnect, event handling
+  storage.py       SQLite event log + snapshot evidence + watchlist, retention purge
+  alerts.py        watchlist (exact + fuzzy) and mismatch alerts, webhook delivery
+  config.py        YAML config with defaults
+service/api.py     REST API (FastAPI) for toll / parking / gate integration
 app/gui.py         PyQt5 desktop application (5.5)
 scripts/
   split_dataset.py              train/val/test split of a YOLO-format dataset (5.1)
@@ -48,9 +56,15 @@ scripts/
   evaluate.py                   detection metrics + recognition metrics / enhancement ablation (6-7)
   infer.py                      CLI inference on images, folders, videos or a webcam
   train_attribute_classifier.py body-type / make-model classifiers for verification (8.2)
+  serve.py                      run cameras + REST API as a service
+  export.py                     ONNX / TensorRT / OpenVINO export
+  export_ocr_dataset.py         build a PaddleOCR fine-tuning set from your plates
 configs/
+  system.yaml                   deployment config (cameras, formats, alerts, storage, API)
   data.yaml                     YOLO dataset config
   registry_example.json         example registration records
+docs/DEPLOYMENT.md              step-by-step guide to a real-world installation
+Dockerfile, docker-compose.yml  containerised service
 tests/                          unit tests (need only numpy + OpenCV + pytest)
 ```
 
@@ -153,6 +167,47 @@ automatic violation, because the attribute classifiers can be wrong
 flags. Use `AttributeComparator(min_mismatches=2)` to flag a plate only when
 two attributes disagree.
 
+## 7. Real-world deployment (live cameras, database, alerts, API)
+
+For a working installation, run the system as a service instead of one
+image at a time:
+
+```
+RTSP camera ─► FrameSource (auto-reconnect, newest frame only)
+            ─► YOLOv11 + ByteTrack (a track ID per plate)
+            ─► deskew ► enhancement ► PaddleOCR ► plate-format correction
+            ─► vote over the track's reads ─► ONE event per vehicle
+            ─► SQLite + snapshots ─► watchlist / mismatch alerts ─► webhook
+            ─► REST API (/events, /recognize, /watchlist, /cameras)
+```
+
+```bash
+# 1. put trained weights in weights/, 2. edit configs/system.yaml (cameras, plate templates, api_key)
+docker compose up -d --build              # or: python scripts/serve.py --config configs/system.yaml
+curl -H "X-API-Key: <key>" "http://localhost:8000/events?plate=LEB"
+curl -H "X-API-Key: <key>" -X POST localhost:8000/watchlist -H 'Content-Type: application/json' \
+     -d '{"plate": "LEB1234", "reason": "reported stolen"}'
+curl -H "X-API-Key: <key>" -F image=@car.jpg "localhost:8000/recognize?save=true"
+```
+
+Why these parts matter on real roads:
+* **Multi-frame voting.** One blurred frame no longer decides the result. A
+  car is seen in 10-40 frames, and the confidence-weighted vote (including a
+  per-character vote) settles on the reading most frames agree on. OCR stops
+  for a track once it is confident, which saves compute.
+* **Plate-format rules.** Correct each position using the known layout,
+  drop province words and stray characters, and flag reads that fit no format.
+* **Deskew.** Straighten tilted plates before enhancement.
+* **Evidence and audit.** Every event stores the timestamp, camera, the
+  full frame with the box drawn, the plate crop, all individual reads and
+  the alerts. Old records are purged according to `retention_days`.
+* **Fuzzy watchlist.** A one-character OCR error still raises a watchlist
+  alert, marked `fuzzy` for the operator.
+
+**See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full checklist:
+data collection, OCR fine-tuning, camera placement, hardware sizing, pilot
+testing and privacy.
+
 ## Tests
 
 ```bash
@@ -162,5 +217,7 @@ python -m pytest -q
 
 The tests cover the enhancement stages, OCR output parsing and multi-line
 ordering, the metrics (including the F1 value in Table 1), the verification
-logic, and the pipeline wiring using stub models. YOLO and PaddleOCR are not
-needed to run them.
+logic, deskew, format correction, multi-frame voting, storage, retention,
+alerts and webhooks, the camera worker on a video file, and the REST API.
+The models are replaced by stubs, so YOLO and PaddleOCR are not needed.
+The API tests need `fastapi` and `httpx`.

@@ -8,6 +8,7 @@ a vehicle-plate verification flag (Section 8).
     python app/gui.py --weights weights/plate_yolo11.pt
     python app/gui.py --weights weights/plate_yolo11.pt \
         --vehicle-weights yolo11n.pt --registry configs/registry_example.json
+    python app/gui.py --config configs/system.yaml
 """
 from __future__ import annotations
 
@@ -62,7 +63,12 @@ class Worker(QObject):
 
     def load(self, opts: dict):
         try:
-            self.pipeline = LicensePlatePipeline.from_weights(**opts)
+            if opts.get("config"):
+                from lpr.config import load_config
+
+                self.pipeline = LicensePlatePipeline.from_config(load_config(opts["config"]))
+            else:
+                self.pipeline = LicensePlatePipeline.from_weights(**opts)
             msg = "Models loaded"
             if self.pipeline.verification_enabled:
                 msg += f" (verification on, {len(self.pipeline.registry)} registered plates)"
@@ -103,7 +109,8 @@ class MainWindow(QMainWindow):
         self.thread.start()
 
         self._build_ui(defaults)
-        if defaults.weights:
+        self.config_path = defaults.config
+        if defaults.weights or defaults.config:
             self._load_models()
 
     # ------------------------------------------------------------------ UI --
@@ -202,6 +209,10 @@ class MainWindow(QMainWindow):
             edit.setText(path)
 
     def _load_models(self):
+        if self.config_path:
+            self._busy(True, f"Loading models from {self.config_path}…")
+            self.request_load.emit({"config": self.config_path})
+            return
         weights = self.weights_edit.text().strip()
         if not weights:
             QMessageBox.warning(self, "Missing weights", "Select the plate detector weights.")
@@ -338,6 +349,8 @@ def main():
                     if Path("weights/plate_yolo11.pt").exists() else None)
     ap.add_argument("--vehicle-weights", default=None)
     ap.add_argument("--registry", default=None)
+    ap.add_argument("--config", default=None,
+                    help="load all settings (format rules, deskew, OCR models...) from a system config")
     args = ap.parse_args()
 
     app = QApplication(sys.argv)
