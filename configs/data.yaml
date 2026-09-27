@@ -1,0 +1,9 @@
+# YOLO dataset config for the license-plate detector (Section 5.1).
+# Produce this layout with:  python scripts/split_dataset.py --src <raw> --dst datasets/plates
+path: datasets/plates
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: license_plate

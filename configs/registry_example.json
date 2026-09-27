@@ -1,0 +1,5 @@
+{
+  "ABC1234": {"color": "white", "body_type": "sedan", "make_model": "toyota_corolla"},
+  "PES5678": {"color": "black", "body_type": "suv", "make_model": "toyota_fortuner"},
+  "LEB9012": {"color": "silver", "body_type": "hatchback", "make_model": "suzuki_swift"}
+}
