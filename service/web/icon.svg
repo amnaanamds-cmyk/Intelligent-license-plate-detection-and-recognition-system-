@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#1c5cab"/>
+  <!-- camera-frame corners -->
+  <g fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M96 176V120a24 24 0 0 1 24-24h56"/>
+    <path d="M336 96h56a24 24 0 0 1 24 24v56"/>
+    <path d="M416 336v56a24 24 0 0 1-24 24h-56"/>
+    <path d="M176 416h-56a24 24 0 0 1-24-24v-56"/>
+  </g>
+  <!-- licence plate -->
+  <rect x="136" y="206" width="240" height="100" rx="16" fill="#ffffff"/>
+  <rect x="150" y="220" width="212" height="72" rx="8" fill="none" stroke="#0b0b0b" stroke-width="6"/>
+  <g fill="#0b0b0b">
+    <rect x="170" y="236" width="14" height="40" rx="3"/>
+    <rect x="194" y="236" width="14" height="40" rx="3"/>
+    <rect x="218" y="236" width="14" height="40" rx="3"/>
+    <rect x="258" y="236" width="14" height="40" rx="3"/>
+    <rect x="282" y="236" width="14" height="40" rx="3"/>
+    <rect x="306" y="236" width="14" height="40" rx="3"/>
+    <rect x="330" y="236" width="14" height="40" rx="3"/>
+  </g>
+</svg>

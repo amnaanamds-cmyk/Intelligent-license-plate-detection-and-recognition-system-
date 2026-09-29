@@ -40,6 +40,27 @@ CREATE TABLE IF NOT EXISTS watchlist (
     reason    TEXT,
     added_ts  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    username    TEXT PRIMARY KEY,
+    pw_hash     TEXT NOT NULL,
+    role        TEXT NOT NULL,                        -- admin | operator | viewer
+    created_ts  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        TEXT NOT NULL,
+    username  TEXT,
+    action    TEXT NOT NULL,
+    detail    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit(ts);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT
+);
 """
 
 
@@ -197,4 +218,98 @@ class EventStore:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM watchlist ORDER BY added_ts DESC").fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------- stats --
+    def stats(self, since: str, hours_since: str | None = None) -> dict:
+        """Dashboard numbers for events at or after ``since`` (ISO UTC).
+        ``hours_since`` limits the hourly histogram (default: same as since)."""
+        hours_since = hours_since or since
+        with self._lock:
+            c = self._conn
+            total, alerts, unique = c.execute(
+                """SELECT COUNT(*), SUM(alerts != '[]'), COUNT(DISTINCT plate)
+                   FROM events WHERE ts >= ?""", (since,)).fetchone()
+            mismatches = c.execute(
+                "SELECT COUNT(*) FROM events WHERE ts >= ? AND verification_status='mismatch'",
+                (since,)).fetchone()[0]
+            per_cam = c.execute(
+                """SELECT camera_id, COUNT(*) n FROM events WHERE ts >= ?
+                   GROUP BY camera_id ORDER BY n DESC""", (since,)).fetchall()
+            hourly = c.execute(
+                """SELECT substr(ts, 1, 13) h, COUNT(*) n FROM events WHERE ts >= ?
+                   GROUP BY h ORDER BY h""", (hours_since,)).fetchall()
+            top = c.execute(
+                """SELECT plate, COUNT(*) n FROM events WHERE ts >= ?
+                   GROUP BY plate ORDER BY n DESC LIMIT 5""", (since,)).fetchall()
+            all_time = c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            watch = c.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
+        return {"events": total or 0, "alerts": alerts or 0, "unique_plates": unique or 0,
+                "mismatches": mismatches or 0, "events_all_time": all_time,
+                "watchlist_size": watch,
+                "per_camera": [dict(r) for r in per_cam],
+                "hourly": [{"hour": r["h"], "count": r["n"]} for r in hourly],
+                "top_plates": [dict(r) for r in top]}
+
+    # ------------------------------------------------------------- users --
+    def add_user(self, username: str, pw_hash: str, role: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO users (username, pw_hash, role, created_ts) "
+                "VALUES (?,?,?,?)", (username, pw_hash, role, utc_now()))
+            self._conn.commit()
+
+    def get_user(self, username: str) -> dict | None:
+        with self._lock:
+            r = self._conn.execute("SELECT * FROM users WHERE username=?",
+                                   (username,)).fetchone()
+        return dict(r) if r else None
+
+    def list_users(self) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT username, role, created_ts FROM users ORDER BY username").fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_user(self, username: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM users WHERE username=?", (username,))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def count_users(self, role: str | None = None) -> int:
+        with self._lock:
+            if role:
+                return self._conn.execute("SELECT COUNT(*) FROM users WHERE role=?",
+                                          (role,)).fetchone()[0]
+            return self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+    def get_setting(self, key: str) -> str | None:
+        with self._lock:
+            r = self._conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return r[0] if r else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._lock:
+            self._conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)",
+                               (key, value))
+            self._conn.commit()
+
+    # ------------------------------------------------------------- audit --
+    def audit(self, username: str | None, action: str, detail: str = "") -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO audit (ts, username, action, detail) VALUES (?,?,?,?)",
+                (utc_now(), username, action, detail[:1000]))
+            self._conn.commit()
+
+    def query_audit(self, limit: int = 200, username: str | None = None) -> list[dict]:
+        sql, args = "SELECT * FROM audit", []
+        if username:
+            sql += " WHERE username=?"
+            args.append(username)
+        sql += " ORDER BY id DESC LIMIT ?"
+        args.append(int(limit))
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
         return [dict(r) for r in rows]

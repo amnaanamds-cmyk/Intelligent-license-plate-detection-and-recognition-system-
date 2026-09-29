@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c5cab">
+<meta name="description" content="License plate recognition: scan, monitor, search and alert">
+<title>PlateVision LPR</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ============================ login / setup ============================ -->
+<section id="auth-screen" class="auth" hidden>
+  <div class="auth-card">
+    <img src="/static/icon.svg" alt="" class="auth-logo">
+    <h1>PlateVision LPR</h1>
+    <p class="muted" id="auth-subtitle">Sign in to continue</p>
+    <form id="login-form" autocomplete="on">
+      <label>Username <input name="username" autocomplete="username" required></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn primary wide" type="submit">Sign in</button>
+    </form>
+    <form id="setup-form" hidden>
+      <p class="note">First start: create the administrator account.</p>
+      <label>Admin username <input name="username" value="admin" required></label>
+      <label>Password (min. 8 characters) <input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+      <button class="btn primary wide" type="submit">Create admin &amp; sign in</button>
+    </form>
+    <p class="error" id="auth-error" role="alert"></p>
+  </div>
+</section>
+
+<!-- ================================ shell ================================ -->
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="brand"><img src="/static/icon.svg" alt=""><span>PlateVision</span></div>
+    <nav class="tabs" id="tabs-desktop" aria-label="Sections"></nav>
+    <div class="user">
+      <span id="user-name"></span><span class="role" id="user-role"></span>
+      <button class="btn ghost small" id="logout-btn" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden role="status"></div>
+
+  <main>
+    <!-- ------------------------------ scan ------------------------------ -->
+    <section class="view" id="view-scan" data-title="Scan" data-icon="📷" data-role="operator">
+      <h2>Scan a plate</h2>
+      <p class="muted">Take a photo of a vehicle or choose one from the gallery.</p>
+      <div class="scan-actions">
+        <label class="btn primary big">📷 Take photo
+          <input type="file" accept="image/*" capture="environment" id="scan-camera" hidden>
+        </label>
+        <label class="btn big">🖼️ Gallery
+          <input type="file" accept="image/*" id="scan-gallery" hidden>
+        </label>
+      </div>
+      <div class="scan-options">
+        <label class="check"><input type="checkbox" id="scan-save" checked> Save to event log</label>
+        <label class="inline">Location <input id="scan-camera-id" value="mobile" maxlength="64"></label>
+      </div>
+      <div id="scan-status" class="status-line" aria-live="polite"></div>
+      <div id="scan-results"></div>
+    </section>
+
+    <!-- --------------------------- dashboard ---------------------------- -->
+    <section class="view" id="view-live" data-title="Live" data-icon="📊" data-role="viewer">
+      <div class="kpis" id="kpis"></div>
+      <div class="card">
+        <div class="card-head"><h3>Plate reads per hour · last 24 h</h3></div>
+        <div class="chart" id="hourly-chart" role="img"></div>
+        <div class="chart-tip" id="chart-tip" hidden></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h3>Latest reads</h3>
+          <label class="check small"><input type="checkbox" id="live-sound" checked> Alert sound</label>
+        </div>
+        <ul class="event-list" id="live-events"></ul>
+      </div>
+    </section>
+
+    <!-- ----------------------------- search ----------------------------- -->
+    <section class="view" id="view-search" data-title="Search" data-icon="🔎" data-role="viewer">
+      <h2>Search events</h2>
+      <form id="search-form" class="grid-form">
+        <label>Plate (partial ok) <input name="plate" maxlength="20" autocapitalize="characters"></label>
+        <label>Camera / location <input name="camera_id" maxlength="64"></label>
+        <label>From <input name="since" type="datetime-local"></label>
+        <label>To <input name="until" type="datetime-local"></label>
+        <label class="check"><input type="checkbox" name="alerts_only"> Alerts only</label>
+        <div class="form-actions">
+          <button class="btn primary" type="submit">Search</button>
+          <a class="btn" id="export-csv" href="#" download>⬇ Export CSV</a>
+        </div>
+      </form>
+      <p class="muted" id="search-count"></p>
+      <ul class="event-list" id="search-results"></ul>
+      <button class="btn wide" id="search-more" hidden type="button">Load more</button>
+    </section>
+
+    <!-- ---------------------------- watchlist --------------------------- -->
+    <section class="view" id="view-watchlist" data-title="Watchlist" data-icon="🚨" data-role="viewer">
+      <h2>Watchlist</h2>
+      <p class="muted">Vehicles to alert on (stolen, wanted, banned). A read that differs by one
+        character also alerts, marked <em>fuzzy</em>.</p>
+      <form id="watch-form" class="row-form" data-role="operator">
+        <input name="plate" placeholder="Plate e.g. LEB1234" maxlength="20" required autocapitalize="characters">
+        <input name="reason" placeholder="Reason" maxlength="500">
+        <button class="btn primary" type="submit">Add</button>
+      </form>
+      <ul class="plain-list" id="watch-list"></ul>
+    </section>
+
+    <!-- ----------------------------- cameras ---------------------------- -->
+    <section class="view" id="view-cameras" data-title="Cameras" data-icon="🎥" data-role="viewer">
+      <h2>Cameras</h2>
+      <div id="camera-cards" class="camera-grid"></div>
+      <details class="card" data-role="operator">
+        <summary>Add a camera</summary>
+        <form id="camera-form" class="grid-form">
+          <label>ID <input name="id" placeholder="gate-in" required maxlength="64"></label>
+          <label>Source <input name="source" placeholder="rtsp://user:pass@192.168.1.64:554/stream1" required></label>
+          <label>Process every Nth frame <input name="stride" type="number" min="1" max="100" value="2"></label>
+          <div class="form-actions"><button class="btn primary" type="submit">Start camera</button></div>
+        </form>
+        <p class="muted small">Phone as camera: install an IP-camera app (e.g. "IP Webcam" on Android)
+          and use its video URL, such as <code>http://192.168.1.20:8080/video</code>.</p>
+      </details>
+    </section>
+
+    <!-- ------------------------------ admin ----------------------------- -->
+    <section class="view" id="view-admin" data-title="Admin" data-icon="⚙️" data-role="admin">
+      <h2>Users</h2>
+      <form id="user-form" class="row-form">
+        <input name="username" placeholder="Username" required maxlength="64">
+        <input name="password" type="password" placeholder="Password (8+)" minlength="8" required autocomplete="new-password">
+        <select name="role">
+          <option value="viewer">Viewer</option>
+          <option value="operator" selected>Operator</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button class="btn primary" type="submit">Add user</button>
+      </form>
+      <ul class="plain-list" id="user-list"></ul>
+      <h2>Audit log</h2>
+      <ul class="plain-list audit" id="audit-list"></ul>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" id="tabs-mobile" aria-label="Sections"></nav>
+</div>
+
+<!-- ============================ event detail ============================ -->
+<dialog id="event-dialog">
+  <div class="dialog-body" id="event-detail"></div>
+  <form method="dialog"><button class="btn wide">Close</button></form>
+</dialog>
+
+<div id="toast" class="toast" hidden role="alert"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

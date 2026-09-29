@@ -92,6 +92,7 @@ class FrameSource:
             ok, frame = self._cap.read()
             if not ok:
                 self.finished = True
+                self.connected = False
                 return None
             return frame
         with self._cond:
@@ -226,6 +227,8 @@ class LPRSystem:
         self._image_lock = threading.Lock()
         self._stop = threading.Event()
         self._listeners: list = []
+        self.model_error: str | None = None
+        self.camera_errors: dict[str, str] = {}
 
     # ------------------------------------------------------------ models --
     @property
@@ -237,6 +240,11 @@ class LPRSystem:
     def make_pipeline(self) -> LicensePlatePipeline:
         """Each camera gets its own detector, because the tracker state lives
         in the model. The OCR engine is shared."""
+        weights = self.cfg["detector"]["weights"]
+        if not weights.startswith(("yolo", "http")) and not Path(weights).exists():
+            raise FileNotFoundError(
+                f"plate detector weights not found: {weights}. Train the model "
+                f"(scripts/train.py) or set detector.weights in the config")
         return LicensePlatePipeline.from_config(self.cfg, ocr=self.ocr)
 
     @property
@@ -245,7 +253,30 @@ class LPRSystem:
             self._image_pipeline = self.make_pipeline()
         return self._image_pipeline
 
+    def load_models(self) -> bool:
+        """Load the models now. On failure (missing weights, OCR models not
+        downloadable, ...) the error is kept in ``model_error`` and the
+        service keeps running, so the web app can show what is wrong."""
+        try:
+            with self._image_lock:
+                self.image_pipeline
+            self.model_error = None
+        except Exception as e:
+            self.model_error = f"{type(e).__name__}: {e}"
+            if "network" in str(e).lower() or "hosting" in str(e).lower():
+                self.model_error += (" - the first start downloads the PaddleOCR models, so it "
+                                     "needs internet access once (or set ocr.det_model_dir / "
+                                     "ocr.rec_model_dir to local copies)")
+            log.error("model loading failed: %s", self.model_error)
+        return self.model_error is None
+
+    @property
+    def models_loaded(self) -> bool:
+        return self._image_pipeline is not None
+
     def recognize_image(self, image: np.ndarray) -> list:
+        if self._image_pipeline is None and not self.load_models():
+            raise RuntimeError(self.model_error)
         with self._image_lock:
             return self.image_pipeline.process(image)
 
@@ -327,7 +358,14 @@ class LPRSystem:
     def start(self) -> None:
         for cam in self.cfg.get("cameras") or []:
             if cam.get("enabled", True):
-                self.start_camera(cam)
+                try:
+                    self.start_camera(cam)
+                    self.camera_errors.pop(str(cam["id"]), None)
+                except Exception as e:
+                    # A broken camera or missing model must not take down the
+                    # service. The error is reported in status().
+                    self.camera_errors[str(cam.get("id"))] = str(e)
+                    log.error("camera %s could not start: %s", cam.get("id"), e)
         days = int(self.cfg["storage"].get("retention_days") or 0)
         if days > 0:
             threading.Thread(target=self._retention_loop, args=(days,),
@@ -351,4 +389,10 @@ class LPRSystem:
             w.join(timeout=10)
 
     def status(self) -> list[dict]:
-        return [w.status() for w in self.cameras.values()]
+        out = [w.status() for w in self.cameras.values()]
+        for cid, err in self.camera_errors.items():
+            if cid not in self.cameras:
+                out.append({"camera_id": cid, "running": False, "connected": False,
+                            "finished": False, "frames": 0, "processed": 0, "fps": 0.0,
+                            "events": 0, "active_tracks": 0, "error": err, "source": ""})
+        return out

@@ -116,9 +116,16 @@ or without Docker: `python scripts/serve.py --config configs/system.yaml`.
 * **Offline sites**: the first start downloads the PaddleOCR models. Start
   once with internet access (they are cached in the `lpr-models` volume),
   or copy the model folders and set `ocr.det_model_dir` / `ocr.rec_model_dir`.
-* **Security**: set `api.api_key`, keep the service on the internal network
-  or behind a reverse proxy with HTTPS, and never expose camera RTSP ports
-  to the internet.
+* **Accounts**: open the web app right after the first start and create
+  the admin account. Until then the system is in open setup mode. Give every
+  person their own account with the lowest role they need (viewer /
+  operator / admin). The audit log records logins, searches, exports and
+  changes.
+* **Security**: keep the service on the internal network or behind a reverse
+  proxy with HTTPS (Caddy, nginx, or `scripts/serve.py --ssl-certfile/--ssl-keyfile`).
+  Use `api.api_key` only for machine integrations, and never expose camera
+  RTSP ports to the internet. HTTPS also stops session tokens from being
+  sent in clear text over Wi-Fi.
 * **Integration**: toll, parking and barrier systems either poll
   `GET /events?since=...`, or receive pushes through `alerts.webhook_url`
   (alerts), or call `POST /recognize` with their own snapshots.

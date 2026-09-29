@@ -18,6 +18,32 @@ along with the proposed vehicle-plate verification extension (Section 8):
                                                                             MATCH / MISMATCH (+ attributes)
 ```
 
+## Quick start (PlateVision web app)
+
+```bash
+# 1. put your trained detector at weights/plate_yolo11.pt
+#    (train for free on Colab: notebooks/train_on_colab.ipynb)
+# 2. start - Windows: double-click start.bat    Linux/Mac: ./start.sh
+# 3. open the printed address, e.g. http://192.168.1.10:8000, on the PC or any phone on the same Wi-Fi
+```
+
+On the first visit the web app asks you to create the admin account. Then:
+
+| Tab | What it does | Role needed |
+|---|---|---|
+| **Scan** | take a photo with the phone camera (or pick one) → plate, confidence, enhanced crop, alerts | operator |
+| **Live** | today's counters, reads per hour, latest reads, alert sound and vibration | viewer |
+| **Search** | find plates by partial number, camera or date range, open the evidence photo, export CSV | viewer |
+| **Watchlist** | stolen or wanted plates. A 1-character near match still alerts, marked *fuzzy* | operator edits |
+| **Cameras** | live RTSP / video / phone IP-camera streams, fps and status, start and stop | operator edits |
+| **Admin** | users (viewer / operator / admin) and the audit log | admin |
+
+On a phone it runs in the browser, so nothing needs installing. To add it
+to the home screen as an app, serve over HTTPS
+(`scripts/serve.py --ssl-certfile ... --ssl-keyfile ...`). For a
+competition, see **[docs/COMPETITION.md](docs/COMPETITION.md)**: checklist,
+5-minute demo script and pitch points.
+
 ## Reported detector results (Table 1)
 
 | Metric | Value |
@@ -47,8 +73,10 @@ lpr/
   stream.py        RTSP/webcam/video workers, reconnect, event handling
   storage.py       SQLite event log + snapshot evidence + watchlist, retention purge
   alerts.py        watchlist (exact + fuzzy) and mismatch alerts, webhook delivery
+  auth.py          users, roles (viewer/operator/admin), sessions, password hashing
   config.py        YAML config with defaults
-service/api.py     REST API (FastAPI) for toll / parking / gate integration
+service/api.py     REST API (FastAPI): auth, recognize, events, stats, CSV, watchlist, cameras, users, audit
+service/web/       PlateVision web app (mobile-first, installable, no external libraries)
 app/gui.py         PyQt5 desktop application (5.5)
 scripts/
   split_dataset.py              train/val/test split of a YOLO-format dataset (5.1)
@@ -59,11 +87,15 @@ scripts/
   serve.py                      run cameras + REST API as a service
   export.py                     ONNX / TensorRT / OpenVINO export
   export_ocr_dataset.py         build a PaddleOCR fine-tuning set from your plates
+  manage_users.py               add / remove / reset web-app users from the command line
+notebooks/train_on_colab.ipynb  train the detector on Colab's free GPU (works from a phone)
+start.bat, start.sh             one-click setup + start
 configs/
   system.yaml                   deployment config (cameras, formats, alerts, storage, API)
   data.yaml                     YOLO dataset config
   registry_example.json         example registration records
 docs/DEPLOYMENT.md              step-by-step guide to a real-world installation
+docs/COMPETITION.md             competition checklist, demo script, pitch
 Dockerfile, docker-compose.yml  containerised service
 tests/                          unit tests (need only numpy + OpenCV + pytest)
 ```

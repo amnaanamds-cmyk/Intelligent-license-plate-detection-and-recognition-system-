@@ -23,7 +23,7 @@ DEFAULTS: dict = {
     "alerts": {"on_watchlist": True, "on_mismatch": True,
                "watchlist_max_distance": 1, "webhook_url": None,
                "webhook_timeout": 5},
-    "api": {"host": "0.0.0.0", "port": 8000, "api_key": None},
+    "api": {"host": "0.0.0.0", "port": 8000, "api_key": None, "session_hours": 12},
     "cameras": [],
 }
 

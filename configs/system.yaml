@@ -72,7 +72,10 @@ alerts:
 api:
   host: 0.0.0.0
   port: 8000
-  api_key: null                      # set to require the X-API-Key header
+  api_key: null                      # machine-to-machine key (X-API-Key header, admin rights)
+  session_hours: 12                  # web-app login lifetime
+  # Web-app users are created on first visit (setup screen) or with
+  # scripts/manage_users.py. They are stored in the database, not here.
 
 cameras: []
 # - id: main-gate-in
